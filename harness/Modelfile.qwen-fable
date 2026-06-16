@@ -1,0 +1,14 @@
+# Derived qwen3-coder model with a context window large enough to actually ingest the
+# full ~28.7k-token Fable 5 prompt PLUS the 4096-token completion budget.
+#
+# WHY THIS EXISTS: Ollama's default num_ctx is 4096. With the stock qwen3-coder:30b, the
+# full-condition prompt was silently truncated to ~4k tokens — the model never saw the
+# prompt under test, invalidating the `full` arm. This variant fixes that. The base model
+# advertises 262144 context; 40960 is the smallest round value that safely holds
+# prompt (~28.8k) + max_tokens (4096) with margin, without over-allocating KV cache RAM.
+#
+# Build:  ollama create qwen3-coder-fable:30b -f harness/Modelfile.qwen-fable
+# (Decoding params like temperature/top_p are supplied per-request by the harness and
+#  override any inherited defaults.)
+FROM qwen3-coder:30b
+PARAMETER num_ctx 40960

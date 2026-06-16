@@ -28,7 +28,10 @@ prompts:
 models:
   - key: qwen3-coder        # short label used in output filenames
     provider: openai_compat
-    model: qwen3-coder:30b
+    model: qwen3-coder-fable:30b          # high-context variant (num_ctx 40960) — REQUIRED:
+                                          # stock qwen3-coder:30b truncates the full prompt to
+                                          # ~4k tokens. Build: ollama create qwen3-coder-fable:30b
+                                          # -f harness/Modelfile.qwen-fable
     base_url: http://localhost:11434/v1   # Ollama OpenAI-compatible endpoint
     api_key_env: OLLAMA_API_KEY           # Ollama ignores it; any value works ("ollama")
     default_api_key: ollama
@@ -44,19 +47,18 @@ models:
       temperature: 1     # kimi-k2.7-code rejects any temperature != 1 (API constraint)
       top_p: 0.95        # kimi-k2.7-code rejects any top_p != 0.95 (API constraint)
 
-# LLM-judge for blinded scoring of subjective criteria (2-7). The judge sees only the
-# task spec + the candidate output (NO model/prompt labels) so scoring is blind.
-# CAVEAT: with only Moonshot + Ollama available, every judge shares a vendor with one
-# candidate (self-preference risk). moonshot-v1-128k is neutral to qwen but same-vendor as
-# kimi; disclosed in the report. Plug in a third-party key (Anthropic/OpenAI) here if you
-# have one for a cleaner judge. Set judge.enabled=false to score by hand instead.
+# JUDGE = Claude (this Claude Code session): an independent, frontier third-party model with
+# ZERO vendor overlap with either candidate (Qwen / Moonshot), so no self-preference bias.
+# Judging is done BLIND via the prepare_blind.py -> (Claude scores) -> deblind_merge.py pipeline:
+# Claude scores anonymized, shuffled outputs with model/condition labels stripped, then verdicts
+# are de-anonymized. This replaces the old same-vendor moonshot-v1 LLM-judge (judge.py), which
+# is kept only as a disabled automated fallback.
 judge:
-  enabled: true
-  model: moonshot-v1-128k
+  enabled: false          # automated API judge OFF; Claude is the blind judge (see pipeline)
+  model: moonshot-v1-128k # (fallback only, if you ever re-enable judge.py)
   base_url: https://api.moonshot.ai/v1
   api_key_env: MOONSHOT_API_KEY
-  temperature: 0          # judge should be as deterministic as the API allows
-  spot_check_fraction: 0.1  # fraction of outputs to also queue for human review (blinded)
+  temperature: 0
 
 tasks_file: ../tasks/tasks.yaml
 output_dir: ../results/raw_outputs

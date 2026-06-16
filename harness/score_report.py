@@ -213,9 +213,11 @@ def main():
     # ---- Caveats ----
     judge_models = sorted({r.get("scorer", "") for r in rows})
     L.append("## Caveats (read before quoting any number)")
-    L.append(f"- **Scorer:** {', '.join(judge_models)}. The judge shares a vendor with one "
-             "candidate (self-preference risk). See `_spot_check_queue.txt` for the blinded "
-             "human re-score sample; compare before trusting cross-model gaps.")
+    L.append(f"- **Scorer:** {', '.join(judge_models)} — an independent frontier model with no "
+             "vendor overlap with either candidate (Qwen/Moonshot), judging blind (model/condition "
+             "labels stripped and shuffled). Residual risk: an LLM judge may still subtly favor "
+             "outputs resembling its own style, and `full`-condition answers can contain "
+             "self-references that partially leak blinding.")
     L.append("- **Sample size is small** — the noise-floor flag is a heuristic, not a significance test.")
     L.append("- **Kimi runs at forced temperature=1** (high variance); its deltas are inherently "
              "less reliable than qwen's at temp=0.2, regardless of repeats.")

@@ -16,6 +16,8 @@ Thumbs.db
 # Keep results/ structure but the raw outputs/scores are regenerable artifacts.
 # Comment these out if you WANT to version your experiment data (recommended once frozen).
 results/raw_outputs/*.md
+results/autocheck/*.yaml
 results/scores/*.yaml
+results/blind/
 results/REPORT.md
 !results/**/.gitkeep
