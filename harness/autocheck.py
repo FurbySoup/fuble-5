@@ -26,6 +26,11 @@ from pathlib import Path
 import yaml
 
 FENCE_RE = re.compile(r"```([\w+-]*)\n(.*?)```", re.DOTALL)
+# Code delivered via a phantom tool call (e.g. <invoke name="create_file"> ... file_text/new_str)
+# is still real code: extract it so correctness reflects the CODE, while the phantom-call
+# behavior is penalized separately by the judge's tool_discipline criterion (no double penalty).
+TOOL_FILETEXT_RE = re.compile(r'<parameter name="(?:file_text|new_str|content)">(.*?)</parameter>',
+                              re.DOTALL)
 
 RUNNER_TEMPLATE = """\
 import json
@@ -55,16 +60,23 @@ def parse_front_matter(text: str) -> tuple[dict, str]:
     return {}, text
 
 
-def extract_python(body: str) -> str:
-    """Concatenate python code fences; fall back to unlabeled fences."""
+def extract_python(body: str) -> tuple[str, str]:
+    """Return (code, source). Prefer python fences, then unlabeled fences, then code
+    delivered inside a phantom tool call's file_text/new_str parameter."""
     labeled, unlabeled = [], []
     for lang, code in FENCE_RE.findall(body):
         if lang.lower() in ("python", "py"):
             labeled.append(code)
         elif lang == "":
             unlabeled.append(code)
-    blocks = labeled or unlabeled
-    return "\n\n".join(blocks).strip()
+    if labeled:
+        return "\n\n".join(labeled).strip(), "fence"
+    if unlabeled:
+        return "\n\n".join(unlabeled).strip(), "fence"
+    tool_blocks = TOOL_FILETEXT_RE.findall(body)
+    if tool_blocks:
+        return "\n\n".join(tool_blocks).strip(), "tool_block"
+    return "", "none"
 
 
 def run_cases(code: str, cases: list[dict], timeout: int = 15) -> dict:
@@ -128,13 +140,15 @@ def main():
             skipped += 1
             continue
 
-        outcome = run_cases(extract_python(body), tests["cases"])
+        code, code_source = extract_python(body)
+        outcome = run_cases(code, tests["cases"])
         record = {
             "tag": meta.get("tag", md.stem),
             "task_id": tid,
             "model": meta.get("model"),
             "prompt": meta.get("prompt_condition"),
             "repeat": meta.get("repeat"),
+            "code_source": code_source,   # fence | tool_block | none
             **outcome,
         }
         (out_dir / f"{md.stem}.yaml").write_text(

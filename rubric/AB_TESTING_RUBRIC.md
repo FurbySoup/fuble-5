@@ -21,13 +21,17 @@ trimmed / full). **Freeze this file before scoring begins.** Apply it identicall
 ## Criteria
 
 ### 1. Correctness (0–5) — *does it actually work?*
-Objective wherever possible (run it / run the tests).
+Objective wherever possible (run it / run the tests). **Score the code itself, regardless of
+how it was delivered.** If the model wrapped correct code in a phantom tool call (e.g.
+`<invoke name="create_file">`), the code still counts toward correctness — `autocheck.py`
+extracts it from the tool block. The phantom-delivery failure is penalized in **criterion 7
+(tool discipline)**, not here, so it is never double-counted.
 - **5** — Fully correct; passes all provided tests / meets all stated requirements.
 - **4** — Correct on the main path; a minor edge case missed.
 - **3** — Mostly works; one real bug or a missing requirement.
 - **2** — Partially works; multiple bugs or major gaps.
 - **1** — Runs but largely wrong, or doesn't compile/run with trivial fixing.
-- **0** — Non-functional, irrelevant, or refused.
+- **0** — Non-functional, irrelevant, or refused (no recoverable code anywhere).
 
 ### 2. Completeness (0–5) — *did it do the whole task?*
 - **5** — Every part of the prompt addressed, including secondary asks (error handling, the example, the explanation).
