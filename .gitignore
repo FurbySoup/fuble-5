@@ -21,3 +21,7 @@ results/scores/*.yaml
 results/blind/
 results/REPORT.md
 !results/**/.gitkeep
+
+# Claude scheduler transient files
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
