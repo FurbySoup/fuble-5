@@ -1,0 +1,34 @@
+# Experiment configuration. Edit model ids/endpoints to match your setup, then freeze.
+
+# Decoding params held constant across all cells (rubric requires this).
+decoding:
+  temperature: 0.2
+  top_p: 0.9
+  max_tokens: 2048
+  seed: 42            # honored by Ollama; Moonshot may ignore (logged either way)
+
+# Repeats per cell. 1 = pilot. Increase for mean ± range.
+repeats: 1
+
+# The two system-prompt conditions. Paths are relative to the repo root.
+prompts:
+  baseline: ../system-prompts/baseline.md
+  fable5:   ../system-prompts/fable-5-full.md
+
+# The two candidate models.
+models:
+  - key: qwen3-coder        # short label used in output filenames
+    provider: openai_compat
+    model: qwen3-coder:30b
+    base_url: http://localhost:11434/v1   # Ollama OpenAI-compatible endpoint
+    api_key_env: OLLAMA_API_KEY           # Ollama ignores it; any value works ("ollama")
+    default_api_key: ollama
+
+  - key: kimi-k2.7-code
+    provider: openai_compat
+    model: kimi-k2.7-code                 # <-- set to the exact Moonshot model id you have access to
+    base_url: https://api.moonshot.ai/v1  # use https://api.moonshot.cn/v1 for the CN endpoint
+    api_key_env: MOONSHOT_API_KEY
+
+tasks_file: ../tasks/tasks.yaml
+output_dir: ../results/raw_outputs

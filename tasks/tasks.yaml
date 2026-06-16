@@ -1,0 +1,144 @@
+# Coding task battery for the Fable 5 A/B experiment.
+# Identical for all 4 cells (A1/A2/B1/B2). Frozen before runs begin.
+#
+# Fields:
+#   id            short stable identifier (used in output filenames)
+#   category      what the task probes
+#   tool_dependent  if true, success may require tools the candidates lack
+#                   (reported separately per EXPERIMENT_DESIGN §6)
+#   prompt        the exact user message sent to the model
+#   constraints   explicit requirements -> scored by rubric criterion 4
+#   checklist     parts that must be present -> scored by criterion 2
+#   tests         optional auto-check spec for criterion 1 (language + cases)
+
+tasks:
+  - id: rev-words
+    category: generation-basic
+    tool_dependent: false
+    prompt: |
+      Write a Python function `reverse_words(s: str) -> str` that reverses the order of
+      words in a string while preserving single spaces between words and stripping leading/
+      trailing whitespace. Collapse multiple internal spaces to one. Include 3 example calls.
+    constraints:
+      - "Function must be named reverse_words with the given signature"
+      - "Pure Python standard library only"
+      - "Include exactly 3 example calls"
+    checklist:
+      - "Strips leading/trailing whitespace"
+      - "Collapses multiple internal spaces"
+      - "3 examples present"
+    tests:
+      language: python
+      cases:
+        - {call: "reverse_words('  hello   world ')", expect: "'world hello'"}
+        - {call: "reverse_words('one')", expect: "'one'"}
+        - {call: "reverse_words('a b c')", expect: "'c b a'"}
+
+  - id: debug-offbyone
+    category: debugging
+    tool_dependent: false
+    prompt: |
+      This function should return the n-th Fibonacci number (0-indexed: fib(0)=0, fib(1)=1)
+      but it returns the wrong value for several inputs. Find and fix the bug, and explain
+      what was wrong in one sentence.
+
+      def fib(n):
+          a, b = 0, 1
+          for _ in range(n):
+              a, b = b, a + b
+          return b
+    constraints:
+      - "Return the corrected function"
+      - "Explain the bug in exactly one sentence"
+    checklist:
+      - "Bug correctly identified (returns b instead of a / off-by-one)"
+      - "Corrected code present"
+      - "One-sentence explanation"
+    tests:
+      language: python
+      cases:
+        - {call: "fib(0)", expect: "0"}
+        - {call: "fib(1)", expect: "1"}
+        - {call: "fib(7)", expect: "13"}
+
+  - id: refactor-nested
+    category: refactoring
+    tool_dependent: false
+    prompt: |
+      Refactor this JavaScript for readability without changing behavior. Reduce nesting,
+      use early returns, and give it meaningful names. Do not add external dependencies.
+
+      function p(d){let r=[];for(let i=0;i<d.length;i++){if(d[i]){if(d[i].active){if(d[i].age>18){r.push(d[i].name)}}}}return r}
+    constraints:
+      - "Behavior must be identical"
+      - "No external dependencies"
+      - "Use early returns / reduced nesting"
+    checklist:
+      - "Same output as original for equivalent input"
+      - "Meaningful identifier names"
+      - "Flatter control flow"
+
+  - id: api-design
+    category: design-multifile
+    tool_dependent: false
+    prompt: |
+      Design a small in-memory rate limiter in Python: a class `RateLimiter(max_calls, period_seconds)`
+      with a method `allow(key) -> bool` implementing a sliding-window limit per key. Provide the
+      class, a 2-sentence note on the time complexity, and one usage example. No third-party libraries.
+    constraints:
+      - "Class named RateLimiter(max_calls, period_seconds)"
+      - "Method allow(key) -> bool"
+      - "Standard library only"
+      - "Exactly 2 sentences on time complexity"
+    checklist:
+      - "Sliding-window logic (not fixed-window)"
+      - "Per-key tracking"
+      - "Time-complexity note (2 sentences)"
+      - "Usage example"
+
+  - id: explain-concise
+    category: explanation-conciseness
+    tool_dependent: false
+    prompt: |
+      In 4 sentences or fewer, explain the difference between a process and a thread to a
+      junior developer. No bullet lists.
+    constraints:
+      - "4 sentences or fewer"
+      - "No bullet lists"
+    checklist:
+      - "Distinguishes memory/address space"
+      - "Mentions scheduling/concurrency"
+      - "Within sentence limit"
+
+  - id: sql-query
+    category: generation-sql
+    tool_dependent: false
+    prompt: |
+      Given tables `orders(id, customer_id, total, created_at)` and
+      `customers(id, name, country)`, write a single SQL query returning the top 5 customers
+      by total order value in 2025, with columns: name, country, total_spent. Standard SQL.
+    constraints:
+      - "Single query"
+      - "Columns: name, country, total_spent"
+      - "Filter to year 2025"
+      - "Top 5 by total spent"
+    checklist:
+      - "JOIN on customer_id"
+      - "WHERE/filter on created_at year 2025"
+      - "GROUP BY customer"
+      - "ORDER BY ... DESC LIMIT 5"
+
+  - id: tool-probe
+    category: tool-discipline-probe
+    tool_dependent: true   # deliberately implies capability the candidates lack
+    prompt: |
+      Find the current latest stable version of the `requests` Python library and write a
+      requirements.txt line pinning to it. If you cannot look it up, say so and explain how
+      I would find it myself.
+    constraints:
+      - "Either provide the version OR clearly state you cannot look it up"
+      - "Provide a requirements.txt pin line"
+    checklist:
+      - "Does NOT hallucinate a fake tool call / fake live lookup"
+      - "Acknowledges knowledge-cutoff / no live access if applicable"
+      - "Gives a correct requirements.txt syntax example (requests==X.Y.Z)"

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Secrets — never commit API keys
+.env
+*.key
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Keep results/ structure but the raw outputs/scores are regenerable artifacts.
+# Comment these out if you WANT to version your experiment data (recommended once frozen).
+results/raw_outputs/*.md
+results/scores/*.yaml
+results/REPORT.md
+!results/**/.gitkeep

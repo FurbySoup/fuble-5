@@ -1,0 +1,16 @@
+# Copy to {model}__{prompt}__{task_id}.yaml and fill in. (.example files are ignored by the report.)
+task_id: rev-words
+model: qwen3-coder:30b        # or kimi-k2.7-code
+prompt: baseline              # or fable5
+scorer: human                 # or "llm-judge:<judge-model>"
+blind: false                  # true if scored before labels were revealed
+scores:
+  correctness:        {value: 0, note: ""}
+  completeness:       {value: 0, note: ""}
+  code_quality:       {value: 0, note: ""}
+  instruction_follow: {value: 0, note: ""}
+  conciseness:        {value: 0, note: ""}
+  safety_calibration: {value: 0, note: ""}
+  tool_discipline:    {value: 0, note: ""}
+total: 0
+flags: []                     # e.g. [hallucinated_tool_call, truncated, refused, over_refusal]
