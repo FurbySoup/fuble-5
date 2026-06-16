@@ -90,7 +90,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--only", help="run only this model key")
-    ap.add_argument("--prompt", choices=["baseline", "fable5"], help="run only this condition")
+    ap.add_argument("--prompt", choices=["baseline", "trimmed", "full"], help="run only this condition")
     ap.add_argument("--task", help="run only this task id (e.g. rev-words) — useful for smoke tests")
     ap.add_argument("--repeats", type=int, help="override repeats from config")
     args = ap.parse_args()
@@ -101,7 +101,6 @@ def main():
     cfg = load_yaml(cfg_path)
 
     decoding = cfg["decoding"]
-    repeats = args.repeats or cfg.get("repeats", 1)
     prompts = {k: read_text((root / v).resolve()) for k, v in cfg["prompts"].items()}
     tasks = load_yaml((root / cfg["tasks_file"]).resolve())["tasks"]
     if args.task:
@@ -118,16 +117,22 @@ def main():
             raise SystemExit(f"No model with key '{args.only}'")
     prompt_keys = [args.prompt] if args.prompt else list(prompts.keys())
 
-    total = len(models) * len(prompt_keys) * len(tasks) * repeats
+    def repeats_for(m):
+        return args.repeats or m.get("repeats") or cfg.get("repeats", 1)
+
+    total = sum(len(prompt_keys) * len(tasks) * repeats_for(m) for m in models)
+    rep_summary = ", ".join(f"{m['key']}:{repeats_for(m)}" for m in models)
     done = 0
-    print(f"Running {total} generations "
-          f"({len(models)} models x {len(prompt_keys)} prompts x {len(tasks)} tasks x {repeats} repeats)\n")
+    print(f"Running {total} generations across {len(models)} models x "
+          f"{len(prompt_keys)} prompts x {len(tasks)} tasks "
+          f"(repeats per model: {rep_summary})\n")
 
     for model_cfg in models:
         client = build_client(model_cfg)
         # Per-model decoding overrides merge over the global defaults. Kept IDENTICAL
-        # across a model's two prompt conditions, so the within-model delta is clean.
+        # across all of a model's prompt conditions, so the within-model deltas stay clean.
         model_decoding = {**decoding, **(model_cfg.get("decoding") or {})}
+        repeats = repeats_for(model_cfg)
         for pkey in prompt_keys:
             for task in tasks:
                 for rep in range(1, repeats + 1):
@@ -155,6 +160,7 @@ def main():
                         "decoding": model_decoding,
                         "latency_s": result["latency_s"],
                         "finish_reason": result["finish_reason"],
+                        "truncated": result["finish_reason"] == "length",
                         "usage": result["usage"],
                     }
                     out_path = out_dir / f"{tag}.md"

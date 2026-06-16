@@ -1,18 +1,22 @@
 # A/B Testing Rubric — Coding Task Scoring
 
-The scoring instrument for every cell of the 2×2 (A1/A2/B1/B2). **Freeze this file before
-scoring begins.** Apply it identically to every output.
+The scoring instrument for every cell of the 2-models × 3-conditions design (baseline /
+trimmed / full). **Freeze this file before scoring begins.** Apply it identically to every output.
 
-## How to score
+## How scoring runs (automated pipeline)
 
-- Score each output on **7 criteria**, 0–5 each → max **35 points**.
-- Use the concrete anchors below; don't invent intermediate definitions on the fly.
-- Where a criterion is objectively checkable (compiles, tests pass), use the auto-check
-  result, not a subjective impression.
-- Record per-criterion scores **and** a one-line justification in the score file
-  (`results/scores/{model}__{prompt}__{task_id}.yaml`). See template at the bottom.
-- "Before/after" result for a model = sum(After cell) − sum(Before cell), reported
-  per-criterion as well as in total.
+- Each output is scored on **7 criteria**, 0–5 each → max **35 points**.
+- **Criterion 1 (Correctness)** is checked **objectively** by `autocheck.py`, which executes
+  the task's `tests` cases. This score overrides the judge for testable tasks; the score file
+  records `correctness_source: autocheck` (else `judge` for non-testable tasks).
+- **Criteria 2–7** are scored by `judge.py`, a **blinded LLM-judge** that sees only the task
+  spec and the candidate answer — not the model or prompt condition. It emits a 0–5 value plus a
+  one-line justification per criterion, using the anchors below.
+- A deterministic `spot_check_fraction` of outputs is flagged (`human_spot_check: true`) for
+  blinded **human re-scoring**, to validate the judge against the standing vendor-overlap caveat.
+- Results aggregate (`score_report.py`) across **repeats** into per-cell means with a noise
+  floor; within-model deltas (`trimmed−baseline`, `full−baseline`, `full−trimmed`) are reported
+  per-criterion and in total, each annotated when it falls within run-to-run noise.
 
 ## Criteria
 
@@ -79,28 +83,30 @@ Specifically probes the Fable 5 prompt's tool-heavy assumptions on a tool-less c
 
 ## Aggregate & report
 
-Per output: **total /35**. Per cell: mean across tasks. Headline numbers:
+Per output: **total /35**. Per cell: mean across tasks × repeats. `score_report.py` produces:
 
 ```
-Local  : Before (A1) = __ /35   After (A2) = __ /35   Delta = __
-Kimi   : Before (B1) = __ /35   After (B2) = __ /35   Delta = __
+qwen3-coder : baseline __ | trimmed __ | full __   (Δtrim __, Δfull __, Δbulk __)  noise ±__
+kimi        : baseline __ | trimmed __ | full __   (Δtrim __, Δfull __, Δbulk __)  noise ±__
 ```
 
 Always accompany totals with the **per-criterion delta table** — the interesting story
 (e.g. "Fable 5 improved conciseness +1.5 but cost −2 on tool discipline") lives there,
-not in the total.
+not in the total. Deltas at or below the noise floor are flagged and treated as null.
 
-## Score file template
+## Score file format (written by judge.py)
 
 ```yaml
-# results/scores/{model}__{prompt}__{task_id}.yaml
-task_id: rev-string
+# results/scores/{model}__{cond}__{task_id}[__rN].yaml
+task_id: rev-words
 model: qwen3-coder:30b        # or kimi-k2.7-code
-prompt: baseline              # or fable5
-scorer: human                 # or "llm-judge:<judge-model>"
-blind: false                  # true if scored before labels revealed
+prompt: baseline              # baseline | trimmed | full
+repeat: 1
+scorer: llm-judge:moonshot-v1-128k
+blind: true
+correctness_source: autocheck # autocheck (objective) | judge (subjective fallback)
 scores:
-  correctness:        {value: 5, note: "passes all 6 unit tests"}
+  correctness:        {value: 5, note: "AUTOCHECK 3/3 cases"}
   completeness:       {value: 4, note: "missing the requested usage example"}
   code_quality:       {value: 4, note: "clean, idiomatic; one magic number"}
   instruction_follow: {value: 5, note: "respected 'no external libs'"}
@@ -108,5 +114,10 @@ scores:
   safety_calibration: {value: 5, note: "no unnecessary hedging"}
   tool_discipline:    {value: 5, note: "no phantom tool calls"}
 total: 31
-flags: []                     # e.g. [hallucinated_tool_call, truncated, refused]
+flags: []                     # e.g. [hallucinated_tool_call, truncated, autocheck_exec_error]
+human_spot_check: false       # true => also queued for blinded human re-scoring
 ```
+
+To score by hand instead of the LLM-judge, set `judge.enabled: false` in `config.yaml` and
+fill these files manually (use `scorer: human`). The `_TEMPLATE.yaml.example` in `results/scores/`
+is a starting point.

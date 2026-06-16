@@ -3,80 +3,90 @@
 ## 1. Question & hypotheses
 
 **Research question:** When a non-Anthropic model is given Claude's Fable 5 system prompt,
-does its coding performance change relative to its own baseline prompt?
+does its coding performance change relative to its own baseline prompt — and is any change
+caused by the *behavioral guidance* or by the *28.7k-token bulk* of the verbatim prompt?
 
-- **H1 (effect exists):** The Fable 5 prompt produces a non-zero change in rubric score
-  for at least one model.
-- **H0 (null):** No meaningful within-model score difference (|delta| within noise).
-- **H2 (directional, exploratory):** Behavioral guidance in the Fable 5 prompt (explicit
-  refusal handling, verbosity controls, tool-use discipline, "act when you have enough
-  information") *improves* instruction-following and structure but may *hurt* raw task
-  completion when it triggers tool references the candidate can't satisfy.
+- **H1 (effect exists):** At least one model shows a within-model rubric-score change beyond
+  its run-to-run noise floor under some Fable-5 condition.
+- **H0 (null):** No within-model delta exceeds the noise floor.
+- **H2 (attribution):** The `trimmed` arm (guidance only) and the `full` arm (guidance + bulk)
+  separate the cause. If `trimmed−baseline` ≈ `full−baseline`, the guidance drives the effect;
+  if they differ, the bulk (length, irrelevant tool/policy text, attention dilution) matters.
+- **H3 (directional, exploratory):** Fable 5's verbosity/formatting and refusal guidance
+  improve conciseness and instruction-following but may hurt `tool_discipline` when the verbatim
+  prompt's tool references induce phantom tool calls in a tool-less candidate.
 
-These are exploratory. With a small task battery and one run per cell this is a
-**descriptive pilot**, not a powered statistical test. Treat deltas as signal, not proof.
+This is a **pilot with variance estimation**, not a powered statistical test. Deltas are
+compared against an empirical noise floor; treat sub-noise deltas as null.
 
 ## 2. Factors
 
 | Factor | Levels |
 |--------|--------|
-| Model | `qwen3-coder:30b` (local), Kimi K2.7 Code (remote) |
-| System prompt | Baseline, Fable 5 |
+| Model | `qwen3-coder:30b` (local, temp 0.2), `kimi-k2.7-code` (remote, forced temp 1) |
+| System prompt | `baseline`, `trimmed`, `full` |
 
-Fully crossed → 4 cells (A1, A2, B1, B2). One block = all 4 cells run on the same task set.
+Fully crossed → 6 cells. Each cell is repeated (qwen ×3, kimi ×5) to estimate variance.
 
 ## 3. Controlled variables
 
-Held constant across all four cells:
+- **Task set** — identical tasks, identical order (`tasks/tasks.yaml`), frozen.
+- **Decoding** — pinned in `harness/config.yaml`, held **identical across a model's three
+  conditions** so within-model deltas are attributable to the prompt. Kimi's API forbids
+  `temperature≠1` and `top_p≠0.95`, so it uses a per-model override (applied to all three of
+  its conditions equally — the comparison stays clean; only cross-model parity is sacrificed).
+- **Scoring instrument** — same rubric, same autocheck, same judge model for every cell.
+- **max_tokens = 4096** — raised so the verbose `full` condition isn't silently truncated;
+  `finish_reason=='length'` is flagged `truncated` and surfaced in the report.
 
-- **Task set** — identical tasks, identical order (see `tasks/tasks.yaml`).
-- **Decoding params** — `temperature`, `top_p`, `max_tokens`, `seed` pinned in
-  `harness/config.yaml`. (Seed only fully reproducible on the local model; Kimi may
-  ignore it — logged regardless.)
-- **Turn budget** — single-turn unless a task is explicitly multi-turn.
-- **Scoring instrument** — the same rubric and the same scorer(s) for every cell.
+Deliberately not controlled: throughput/latency (hardware/API-bound) — logged, not scored.
 
-Deliberately **not** controlled (and why): token throughput / wall-clock latency is
-hardware- and API-bound, logged for context but excluded from the quality score.
+## 4. Procedure (pipeline)
 
-## 4. Procedure
-
-1. **Pre-registration.** Before any runs, freeze: task set, rubric, decoding params,
-   and the baseline prompt text. Commit them. No edits to the instrument after scoring starts.
-2. **Generation.** `run_experiment.py` iterates all 4 cells × all tasks, saving each raw
-   response to `results/raw_outputs/{model}__{prompt}__{task_id}.md` with metadata
-   (params, latency, token counts).
-3. **Blinding.** `score_report.py --prepare-blind` (optional) strips model/prompt labels
-   and shuffles outputs into an anonymized scoring queue to reduce scorer bias.
-4. **Scoring.** Each output is scored per `rubric/AB_TESTING_RUBRIC.md`. Code-execution
-   criteria (compiles, tests pass) are objective and auto-checked where possible; quality
-   criteria are rated by a human and/or an LLM-judge (declare which in the score file).
-5. **Analysis.** Compute per-cell totals, then within-model deltas (A2−A1, B2−B1) and the
-   cross-model comparison. Report per-criterion breakdowns, not just totals.
+1. **Pre-registration / freeze.** Before runs: task set, rubric, decoding, repeats, and all
+   three prompt files are committed and not edited after scoring starts.
+2. **Generate** — `run_experiment.py` → `results/raw_outputs/{model}__{cond}__{task}__rN.md`,
+   each with metadata (effective decoding, latency, token usage, truncation).
+3. **Autocheck** — `autocheck.py` executes the `tests` cases for testable tasks in an isolated
+   subprocess → objective correctness (0–5) in `results/autocheck/`. This is the only fully
+   objective criterion and overrides the judge's correctness where available.
+4. **Blinded judge** — `judge.py` sends the judge model only the task spec + the candidate
+   answer (no model/condition labels) and gets 0–5 scores + justifications for the remaining
+   criteria → `results/scores/`. A deterministic `spot_check_fraction` is flagged for blinded
+   human re-scoring (`_spot_check_queue.txt`) to validate the judge.
+5. **Aggregate** — `score_report.py` → `results/REPORT.md`: per-cell means, per-criterion
+   deltas, the three within-model deltas, the noise floor and which deltas exceed it, plus a
+   cost/health table (latency, tokens, truncations) and the standing caveats.
 
 ## 5. "Before and after" framing
 
-The user's framing — *score each model before and after updating to the Fable 5 prompt* —
-maps directly onto the within-model delta:
-
-- **Before** = baseline cell (A1 / B1)
-- **After** = Fable 5 cell (A2 / B2)
-- **Reported result** = After − Before, per criterion and in total, per model.
+- **Before** = `baseline` cell. **After (guidance)** = `trimmed`. **After (verbatim)** = `full`.
+- Reported result per model = `trimmed−baseline`, `full−baseline`, and the bulk effect
+  `full−trimmed`, each per-criterion and in total, with the noise-floor annotation.
 
 ## 6. Threats to validity
 
 | Threat | Mitigation |
 |--------|-----------|
-| **Tool mismatch.** Fable 5 prompt assumes Anthropic tools (web_search, bash_tool, artifacts, MCP, memory) the candidates lack. | Tag tasks that don't need tools as the *core* battery; report tool-dependent tasks separately. Note refusals/hallucinated tool calls as a rubric observation. |
-| **Prompt length.** Fable 5 is ~1,800 lines (~30k+ tokens), eating context window and possibly degrading attention. | Log prompt token count; check candidate context limits. Note any truncation. |
-| **Scorer bias.** Knowing which cell produced an output biases ratings. | Optional blinding step (§4.3). Use a fixed rubric with concrete anchors. |
-| **Single run / small n.** No statistical power. | Frame as a pilot. Optionally run k repeats per cell (`--repeats k`) and report mean ± range. |
-| **Judge model bias.** An LLM judge may favor outputs that resemble its own style. | Use a neutral judge model, disclose it, spot-check against human scores. |
-| **Seed/determinism.** Remote API may ignore seed. | Log actual params returned; flag non-determinism. |
+| **Tool mismatch.** Full prompt assumes Anthropic tools the candidates lack. | The `trimmed` arm strips tool references; `tool_discipline` criterion measures the reaction; phantom-tool flags recorded. |
+| **Prompt length / dilution.** Full prompt is ~28.7k tokens. | The `trimmed` vs `full` contrast isolates the bulk's effect. Prompt tokens logged per cell. |
+| **Single-sample noise.** | Repeats per cell → empirical noise floor; sub-noise deltas treated as null. Kimi gets more repeats (forced temp 1). |
+| **Scorer subjectivity & bias.** | Objective autocheck for correctness; blinded LLM-judge for the rest; blinded human spot-check sample. |
+| **Judge vendor self-preference.** Only Moonshot+Ollama available, so the judge shares a vendor with one candidate. | Disclosed in REPORT; spot-check validates; a third-party judge key can be dropped into `config.judge`. |
+| **Ceiling effects.** Trivial tasks score 5 everywhere → no signal. | Battery includes discriminating tasks (rate-limiter, refactor, tool-probe); report weights these. |
+| **Determinism.** Kimi ignores seed at temp 1. | Logged; reproducibility claimed only for qwen. |
+| **Baseline ≠ true default.** `baseline.md` says "be concise". | Stated explicitly: this is prompt-vs-prompt, not "no prompt vs Fable 5". |
 
-## 7. Outputs / deliverables
+## 7. What we will and won't be able to claim
 
-- `results/raw_outputs/` — every model response with metadata.
-- `results/scores/` — one filled rubric per output.
-- `results/REPORT.md` — generated summary: the 2×2 score table, within-model deltas,
-  per-criterion breakdown, and a narrative of observed behavioral changes.
+- **Defensible:** per-model direction and magnitude of change (vs baseline) on this battery,
+  with correctness objectively verified, deltas judged against a noise floor, and the
+  guidance-vs-bulk attribution from the 3-arm contrast.
+- **Weaker for Kimi:** forced temp=1 means higher variance and lower confidence even with repeats.
+- **Not claimable:** that Claude's prompt engineering is "good/bad" in general (2 models, small
+  battery), or any clean cross-model ranking (different models/temperatures/token budgets).
+
+## 8. Deliverables
+
+`results/raw_outputs/` (responses + metadata), `results/autocheck/` (objective correctness),
+`results/scores/` (per-output rubric), `results/REPORT.md` (the synthesized result).

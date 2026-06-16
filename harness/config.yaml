@@ -1,22 +1,28 @@
 # Experiment configuration. Edit model ids/endpoints to match your setup, then freeze.
 
-# Global decoding defaults. Held identical across a model's two prompt conditions
-# (baseline vs fable5) so the within-model delta is attributable to the prompt alone.
+# Global decoding defaults. Held identical across a model's prompt conditions
+# (baseline / trimmed / full) so within-model deltas are attributable to the prompt alone.
 # A model may override these (see kimi below) when its API forbids a value; the override
-# is still applied identically to both of that model's conditions.
+# is still applied identically to all of that model's conditions.
 decoding:
   temperature: 0.2
   top_p: 0.9
-  max_tokens: 2048
-  seed: 42            # honored by Ollama; Moonshot may ignore (logged either way)
+  max_tokens: 4096     # raised from 2048: the verbose full-Fable5 condition can clip longer
+                       # answers; finish_reason=='length' is flagged as truncated in metadata.
+  seed: 42             # honored by Ollama; Moonshot ignores it (esp. at temp=1) — logged anyway
 
-# Repeats per cell. 1 = pilot. Increase for mean ± range.
+# Repeats per cell. Estimates run-to-run variance (the noise floor) so deltas can be
+# compared against it. Per-model override below; this is the default.
 repeats: 1
 
-# The two system-prompt conditions. Paths are relative to the repo root.
+# Three system-prompt conditions (3-arm design). Paths are relative to the repo root.
+#   baseline = neutral minimal coding prompt   (control)
+#   trimmed  = Fable5 coding-relevant behavior  (isolates the guidance)
+#   full     = verbatim Fable5 prompt           (guidance + ~28.7k-token bulk)
 prompts:
   baseline: ../system-prompts/baseline.md
-  fable5:   ../system-prompts/fable-5-full.md
+  trimmed:  ../system-prompts/fable-5-trimmed.md
+  full:     ../system-prompts/fable-5-full.md
 
 # The two candidate models.
 models:
@@ -26,15 +32,31 @@ models:
     base_url: http://localhost:11434/v1   # Ollama OpenAI-compatible endpoint
     api_key_env: OLLAMA_API_KEY           # Ollama ignores it; any value works ("ollama")
     default_api_key: ollama
+    repeats: 3            # near-deterministic at temp=0.2, so 3 reps suffice for variance
 
   - key: kimi-k2.7-code
     provider: openai_compat
-    model: kimi-k2.7-code                 # <-- set to the exact Moonshot model id you have access to
+    model: kimi-k2.7-code                 # confirmed available via Moonshot models list
     base_url: https://api.moonshot.ai/v1  # use https://api.moonshot.cn/v1 for the CN endpoint
     api_key_env: MOONSHOT_API_KEY          # key lives in harness/.env (gitignored), NOT here
+    repeats: 5            # forced to temp=1 (high variance) -> need more reps to find signal
     decoding:
       temperature: 1     # kimi-k2.7-code rejects any temperature != 1 (API constraint)
       top_p: 0.95        # kimi-k2.7-code rejects any top_p != 0.95 (API constraint)
+
+# LLM-judge for blinded scoring of subjective criteria (2-7). The judge sees only the
+# task spec + the candidate output (NO model/prompt labels) so scoring is blind.
+# CAVEAT: with only Moonshot + Ollama available, every judge shares a vendor with one
+# candidate (self-preference risk). moonshot-v1-128k is neutral to qwen but same-vendor as
+# kimi; disclosed in the report. Plug in a third-party key (Anthropic/OpenAI) here if you
+# have one for a cleaner judge. Set judge.enabled=false to score by hand instead.
+judge:
+  enabled: true
+  model: moonshot-v1-128k
+  base_url: https://api.moonshot.ai/v1
+  api_key_env: MOONSHOT_API_KEY
+  temperature: 0          # judge should be as deterministic as the API allows
+  spot_check_fraction: 0.1  # fraction of outputs to also queue for human review (blinded)
 
 tasks_file: ../tasks/tasks.yaml
 output_dir: ../results/raw_outputs
