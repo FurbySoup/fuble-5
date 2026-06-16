@@ -1,6 +1,9 @@
 # Experiment configuration. Edit model ids/endpoints to match your setup, then freeze.
 
-# Decoding params held constant across all cells (rubric requires this).
+# Global decoding defaults. Held identical across a model's two prompt conditions
+# (baseline vs fable5) so the within-model delta is attributable to the prompt alone.
+# A model may override these (see kimi below) when its API forbids a value; the override
+# is still applied identically to both of that model's conditions.
 decoding:
   temperature: 0.2
   top_p: 0.9
@@ -28,7 +31,10 @@ models:
     provider: openai_compat
     model: kimi-k2.7-code                 # <-- set to the exact Moonshot model id you have access to
     base_url: https://api.moonshot.ai/v1  # use https://api.moonshot.cn/v1 for the CN endpoint
-    api_key_env: MOONSHOT_API_KEY
+    api_key_env: MOONSHOT_API_KEY          # key lives in harness/.env (gitignored), NOT here
+    decoding:
+      temperature: 1     # kimi-k2.7-code rejects any temperature != 1 (API constraint)
+      top_p: 0.95        # kimi-k2.7-code rejects any top_p != 0.95 (API constraint)
 
 tasks_file: ../tasks/tasks.yaml
 output_dir: ../results/raw_outputs

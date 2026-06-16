@@ -19,6 +19,18 @@ import yaml
 from openai import OpenAI
 
 
+def load_dotenv(path: Path) -> None:
+    """Minimal .env loader (no dependency): set KEY=VALUE pairs not already in env."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 def load_yaml(path: Path):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -79,17 +91,23 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--only", help="run only this model key")
     ap.add_argument("--prompt", choices=["baseline", "fable5"], help="run only this condition")
+    ap.add_argument("--task", help="run only this task id (e.g. rev-words) — useful for smoke tests")
     ap.add_argument("--repeats", type=int, help="override repeats from config")
     args = ap.parse_args()
 
     cfg_path = Path(args.config).resolve()
     root = cfg_path.parent
+    load_dotenv(root / ".env")
     cfg = load_yaml(cfg_path)
 
     decoding = cfg["decoding"]
     repeats = args.repeats or cfg.get("repeats", 1)
     prompts = {k: read_text((root / v).resolve()) for k, v in cfg["prompts"].items()}
     tasks = load_yaml((root / cfg["tasks_file"]).resolve())["tasks"]
+    if args.task:
+        tasks = [t for t in tasks if t["id"] == args.task]
+        if not tasks:
+            raise SystemExit(f"No task with id '{args.task}'")
     out_dir = (root / cfg["output_dir"]).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -107,6 +125,9 @@ def main():
 
     for model_cfg in models:
         client = build_client(model_cfg)
+        # Per-model decoding overrides merge over the global defaults. Kept IDENTICAL
+        # across a model's two prompt conditions, so the within-model delta is clean.
+        model_decoding = {**decoding, **(model_cfg.get("decoding") or {})}
         for pkey in prompt_keys:
             for task in tasks:
                 for rep in range(1, repeats + 1):
@@ -116,7 +137,7 @@ def main():
                     print(f"[{done}/{total}] {tag} ...", end=" ", flush=True)
                     try:
                         result = call_model(client, model_cfg, prompts[pkey],
-                                            task["prompt"], decoding)
+                                            task["prompt"], model_decoding)
                     except Exception as e:  # noqa: BLE001 — log and continue the battery
                         print(f"ERROR: {e}")
                         result = {"content": f"[GENERATION ERROR] {e}", "latency_s": None,
@@ -131,7 +152,7 @@ def main():
                         "category": task.get("category"),
                         "tool_dependent": task.get("tool_dependent", False),
                         "repeat": rep,
-                        "decoding": decoding,
+                        "decoding": model_decoding,
                         "latency_s": result["latency_s"],
                         "finish_reason": result["finish_reason"],
                         "usage": result["usage"],
